@@ -1,0 +1,350 @@
+openapi: 3.0.3
+info:
+  title: Order Management API
+  version: 1.0.0
+  description: All errors use the ErrorResponse format.
+paths:
+  /products:
+    post:
+      summary: Create product
+      operationId: createProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    get:
+      summary: List products
+      operationId: listProducts
+      parameters:
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/Offset' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Product' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /products/{product_id}:
+    parameters:
+      - { $ref: '#/components/parameters/ProductId' }
+    get:
+      summary: Get product
+      operationId: getProduct
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    put:
+      summary: Update product (full replace of name, price, stock)
+      operationId: updateProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductCreate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      summary: Delete product
+      description: 409 PRODUCT_IN_USE if any order item references it.
+      operationId: deleteProduct
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /customers:
+    post:
+      summary: Create customer
+      description: 409 EMAIL_ALREADY_EXISTS if email is taken.
+      operationId: createCustomer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /customers/{customer_id}:
+    get:
+      summary: Get customer
+      operationId: getCustomer
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /orders:
+    post:
+      summary: Create order
+      description: >
+        Server computes total and unit prices, and reduces stock atomically.
+        404 if customer or a product does not exist; 409 INSUFFICIENT_STOCK
+        if any item exceeds stock. New orders have status PENDING.
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    get:
+      summary: List orders
+      operationId: listOrders
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+        - name: customer_id
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1 }
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/Offset' }
+      responses:
+        '200':
+          description: OK (ordered by id ascending)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Order' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /orders/{order_id}:
+    get:
+      summary: Get order
+      operationId: getOrder
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /orders/{order_id}/status:
+    patch:
+      summary: Change order status
+      description: >
+        Allowed: PENDING->PAID, PAID->SHIPPED, SHIPPED->DELIVERED,
+        PENDING->CANCELLED, PAID->CANCELLED. Others return 409
+        INVALID_STATUS_TRANSITION. Cancelling returns stock.
+      operationId: updateOrderStatus
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderStatusUpdate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+components:
+  parameters:
+    ProductId:
+      name: product_id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    OrderId:
+      name: order_id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    Offset:
+      name: offset
+      in: query
+      required: false
+      schema: { type: integer, minimum: 0, default: 0 }
+  responses:
+    NotFound:
+      description: >
+        Resource not found. code is PRODUCT_NOT_FOUND, CUSTOMER_NOT_FOUND
+        or ORDER_NOT_FOUND.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: { code: ORDER_NOT_FOUND, message: Order 7 not found }
+    Conflict:
+      description: >
+        code is one of EMAIL_ALREADY_EXISTS, INSUFFICIENT_STOCK,
+        INVALID_STATUS_TRANSITION, PRODUCT_IN_USE.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: { code: INSUFFICIENT_STOCK, message: 'Product 3 has only 2 in stock' }
+    ValidationError:
+      description: Request failed validation (code VALIDATION_ERROR).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Request validation failed
+              details:
+                - { field: 'items.0.quantity', message: Input should be greater than 0 }
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - BAD_REQUEST
+                - PRODUCT_NOT_FOUND
+                - CUSTOMER_NOT_FOUND
+                - ORDER_NOT_FOUND
+                - EMAIL_ALREADY_EXISTS
+                - INSUFFICIENT_STOCK
+                - INVALID_STATUS_TRANSITION
+                - PRODUCT_IN_USE
+                - VALIDATION_ERROR
+                - INTERNAL_ERROR
+            message: { type: string }
+            details:
+              type: array
+              description: Optional, only for VALIDATION_ERROR.
+              items:
+                type: object
+                required: [field, message]
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+    OrderStatus:
+      type: string
+      enum: [PENDING, PAID, SHIPPED, DELIVERED, CANCELLED]
+    ProductCreate:
+      type: object
+      required: [name, price, stock]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        price: { type: number, format: decimal, minimum: 0, multipleOf: 0.01 }
+        stock: { type: integer, minimum: 0 }
+    Product:
+      allOf:
+        - $ref: '#/components/schemas/ProductCreate'
+        - type: object
+          required: [id]
+          properties:
+            id: { type: integer }
+    CustomerCreate:
+      type: object
+      required: [name, email]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        email: { type: string, format: email, maxLength: 254 }
+    Customer:
+      allOf:
+        - $ref: '#/components/schemas/CustomerCreate'
+        - type: object
+          required: [id]
+          properties:
+            id: { type: integer }
+    OrderItemCreate:
+      type: object
+      required: [product_id, quantity]
+      properties:
+        product_id: { type: integer, minimum: 1 }
+        quantity: { type: integer, minimum: 1, description: Must be > 0 }
+    OrderCreate:
+      type: object
+      description: No total or status accepted from the client.
+      required: [customer_id, items]
+      properties:
+        customer_id: { type: integer, minimum: 1 }
+        items:
+          type: array
+          minItems: 1
+          description: Product ids must be unique within the list.
+          items: { $ref: '#/components/schemas/OrderItemCreate' }
+    OrderItem:
+      type: object
+      required: [product_id, quantity, unit_price]
+      properties:
+        product_id: { type: integer }
+        quantity: { type: integer, minimum: 1 }
+        unit_price: { type: number, minimum: 0, description: Price at time of order }
+    Order:
+      type: object
+      required: [id, customer_id, items, status, total, created_at]
+      properties:
+        id: { type: integer }
+        customer_id: { type: integer }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/OrderItem' }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        total: { type: number, minimum: 0, description: Sum of unit_price * quantity, server-calculated }
+        created_at: { type: string, format: date-time, description: UTC }
+    OrderStatusUpdate:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: '#/components/schemas/OrderStatus' }
